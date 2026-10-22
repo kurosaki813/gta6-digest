@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+<channel>
+<title>Some Games Site</title>
+<link>https://example-games.com</link>
+<item>
+  <title>GTA 6 PC version release date leak: what we know about the delay</title>
+  <link>https://example-games.com/gta-6-pc-leak</link>
+  <guid>https://example-games.com/gta-6-pc-leak</guid>
+  <pubDate>Thu, 22 Oct 2026 08:10:00 +0000</pubDate>
+  <description><![CDATA[<p>Reports claim the PC port of Grand Theft Auto VI arrives later.</p>]]></description>
+</item>
+<item>
+  <title>Best budget headphones of 2026</title>
+  <link>https://example-games.com/headphones</link>
+  <guid>https://example-games.com/headphones</guid>
+  <pubDate>Thu, 22 Oct 2026 08:00:00 +0000</pubDate>
+  <description><![CDATA[<p>Nothing about GTA here.</p>]]></description>
+</item>
+<item>
+  <title>Take-Two earnings: GTA VI pre-orders break records</title>
+  <link>https://example-games.com/take-two-earnings</link>
+  <guid>https://example-games.com/take-two-earnings</guid>
+  <pubDate>Thu, 22 Oct 2026 07:00:00 +0000</pubDate>
+  <description><![CDATA[<p>Strauss Zelnick says sales are strong.</p>]]></description>
+</item>
+</channel>
+</rss>
