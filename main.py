@@ -1,13 +1,14 @@
-"""GTA 6 News Digest — точка входа.
+"""GTA 6 News Digest — entry point.
 
-Команды:
-  python3 main.py run            — работать постоянно (сбор каждые N минут + дайджест)
-  python3 main.py once           — один сбор и вывести дайджест в консоль
-  python3 main.py digest         — показать дайджест из базы (ничего не скачивает)
-  python3 main.py digest --send  — отправить дайджест в Telegram
-  python3 main.py stats          — сколько всего собрано
-  python3 main.py chat-id        — узнать свой chat_id для Telegram
-  python3 main.py test-telegram  — отправить тестовое сообщение
+Commands:
+  python3 main.py run            — run continuously (collect every N minutes + daily digest)
+  python3 main.py once           — collect once and print the digest
+  python3 main.py digest         — print the digest from the database (no downloads)
+  python3 main.py digest --send  — send the digest to Telegram
+  python3 main.py sync-deletions — check now for posts deleted on Reddit (API mode)
+  python3 main.py stats          — what has been collected so far
+  python3 main.py chat-id        — find your Telegram chat_id
+  python3 main.py test-telegram  — send a test message
 """
 from __future__ import annotations
 
@@ -38,11 +39,11 @@ def setup_logging(log_path) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="GTA 6 News Digest")
-    ap.add_argument("command", choices=["run", "once", "digest", "stats", "chat-id",
-                                        "test-telegram"])
+    ap.add_argument("command", choices=["run", "once", "digest", "sync-deletions", "stats",
+                                        "chat-id", "test-telegram"])
     ap.add_argument("--config", default="config.ini")
-    ap.add_argument("--hours", type=int, default=24, help="за сколько часов дайджест")
-    ap.add_argument("--send", action="store_true", help="отправить дайджест в Telegram")
+    ap.add_argument("--hours", type=int, default=24, help="digest period in hours")
+    ap.add_argument("--send", action="store_true", help="send the digest to Telegram")
     args = ap.parse_args()
 
     cfg = config_mod.load(args.config)
@@ -50,10 +51,10 @@ def main() -> None:
 
     if args.command == "chat-id":
         if not cfg.telegram_token:
-            sys.exit("Сначала впиши token бота в config.ini")
+            sys.exit("Put your bot token into config.ini first")
         ids = Telegram.find_chat_ids(cfg.telegram_token)
         if not ids:
-            print("Чатов не найдено. Напиши своему боту любое сообщение и запусти команду снова.")
+            print("No chats found. Send any message to your bot and run this command again.")
         for i in ids:
             print("chat_id:", i)
         return
@@ -62,22 +63,25 @@ def main() -> None:
 
     if args.command == "test-telegram":
         if not app.telegram:
-            sys.exit("Telegram не настроен: проверь enabled, token и chat_id в config.ini")
-        app.telegram.send("✅ GTA 6 Digest на связи!")
-        print("Отправлено.")
+            sys.exit("Telegram is not configured: check enabled, token and chat_id in config.ini")
+        app.telegram.send("✅ GTA 6 Digest is up and running!")
+        print("Sent.")
     elif args.command == "run":
         app.run_forever()
     elif args.command == "once":
         stats = app.collect()
-        print(f"\nНовых: {stats['new']}, обновлено: {stats['updated']}, "
-              f"ошибок источников: {stats['errors']}\n")
+        print(f"\nNew: {stats['new']}, updated: {stats['updated']}, deleted: {stats['deleted']}, "
+              f"source errors: {stats['errors']}\n")
         print(html_to_console(app.make_digest(args.hours)))
     elif args.command == "digest":
         text = app.send_digest(args.hours) if args.send else app.make_digest(args.hours)
         print(html_to_console(text))
+    elif args.command == "sync-deletions":
+        n = app.sync_deletions(force=True)
+        print(f"Removed {n} posts deleted at the source.")
     elif args.command == "stats":
         c = app.storage.counts()
-        print(f"Постов: {c['posts']}, историй: {c['stories']}")
+        print(f"Posts: {c['posts']}, stories: {c['stories']}")
         for key, label in CATEGORIES.items():
             if c["by_category"].get(key):
                 print(f"  {label}: {c['by_category'][key]}")

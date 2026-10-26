@@ -1,4 +1,4 @@
-"""Хранилище на SQLite: посты, истории (кластеры дублей), служебные значения."""
+"""SQLite storage: posts, stories (clusters of duplicates) and a small key-value table."""
 from __future__ import annotations
 
 import sqlite3
@@ -45,10 +45,11 @@ CREATE TABLE IF NOT EXISTS posts (
     UNIQUE(source, external_id)
 );
 CREATE INDEX IF NOT EXISTS idx_posts_published ON posts(published);
+CREATE INDEX IF NOT EXISTS idx_posts_story ON posts(story_id);
 CREATE INDEX IF NOT EXISTS idx_stories_last_seen ON stories(last_seen);
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT);
 """
-# ВАЖНО (обещание в заявке): в схеме нет колонки с автором поста.
+# PRIVACY: the schema has no column for the post author.
 
 CLUSTER_WINDOW_HOURS = 72
 
@@ -73,16 +74,16 @@ class Storage:
     def close(self) -> None:
         self.db.close()
 
-    # ---------- посты ----------
+    # ---------- posts ----------
     def save_post(self, post: Post, cls: Classification) -> Tuple[bool, int]:
-        """Сохранить пост. Возвращает (новый ли пост, id истории).
+        """Save a post. Returns (is_new, story_id).
 
-        Если пост уже есть — обновляем изменчивые поля (рейтинг, текст после правки).
+        If the post already exists, only mutable fields are refreshed
+        (score, comment count, edited text).
         """
-        cur = self.db.execute(
+        row = self.db.execute(
             "SELECT id, story_id FROM posts WHERE source=? AND external_id=?",
-            (post.source, post.external_id))
-        row = cur.fetchone()
+            (post.source, post.external_id)).fetchone()
         if row:
             self.db.execute(
                 "UPDATE posts SET title=?, text=?, score=COALESCE(?, score), "
@@ -110,11 +111,11 @@ class Storage:
         for s in candidates:
             if is_same_story(post.title, s["title"], post.link_url, s["link_url"]):
                 new_status = stronger_status(s["status"], cls.status)
-                # Если история повысилась до официальной — тема тоже официальная
+                # A story promoted to official also moves to the official topic
                 category = "official" if new_status in ("official", "confirmed") \
                     and s["category"] in ("discussion", "memes") else s["category"]
                 sources = set(filter(None, s["sources"].split(","))) | {post.source}
-                # Ссылку на официальный источник предпочитаем ссылке на Reddit
+                # Prefer a link to the official source over a Reddit link
                 best_url = s["best_url"]
                 if cls.status == "official" and s["status"] != "official" and post.link_url:
                     best_url = post.link_url
@@ -135,7 +136,41 @@ class Storage:
              post.source, _iso(_now()), _iso(_now())))
         return cur.lastrowid
 
-    # ---------- истории ----------
+    def ids_for_source(self, source: str) -> List[str]:
+        """External IDs of all stored posts from a source (used for deletion sync)."""
+        return [r[0] for r in self.db.execute(
+            "SELECT external_id FROM posts WHERE source=? ORDER BY published DESC", (source,))]
+
+    def delete_post(self, source: str, external_id: str) -> None:
+        """DELETION SYNC: remove a post that was deleted/removed at the source.
+
+        The story built from it is deleted too if no other posts remain;
+        otherwise its title is replaced with a remaining post's title.
+        """
+        row = self.db.execute("SELECT id, story_id FROM posts WHERE source=? AND external_id=?",
+                              (source, external_id)).fetchone()
+        if not row:
+            return
+        self.db.execute("DELETE FROM posts WHERE id=?", (row["id"],))
+        sid = row["story_id"]
+        if sid is not None:
+            remaining = self.db.execute(
+                "SELECT title, url, link_url FROM posts WHERE story_id=? ORDER BY published",
+                (sid,)).fetchall()
+            if not remaining:
+                self.db.execute("DELETE FROM stories WHERE id=?", (sid,))
+            else:
+                story = self.db.execute("SELECT best_url FROM stories WHERE id=?",
+                                        (sid,)).fetchone()
+                known_urls = {r["url"] for r in remaining} | \
+                    {r["link_url"] for r in remaining if r["link_url"]}
+                best_url = story["best_url"] if story["best_url"] in known_urls \
+                    else remaining[0]["url"]
+                self.db.execute("UPDATE stories SET title=?, best_url=?, mentions=? WHERE id=?",
+                                (remaining[0]["title"], best_url, len(remaining), sid))
+        self.db.commit()
+
+    # ---------- stories ----------
     def stories_since(self, since: datetime) -> List[sqlite3.Row]:
         return self.db.execute(
             "SELECT * FROM stories WHERE last_seen >= ? "
@@ -155,24 +190,17 @@ class Storage:
         self.db.execute("UPDATE stories SET alerted = 1")
         self.db.commit()
 
-    # ---------- чистка ----------
+    # ---------- retention ----------
     def purge_older_than(self, days: int) -> int:
-        """ВАЖНО (обещание в заявке): удаляем данные старше N дней (по умолчанию 30)."""
+        """RETENTION: delete posts older than `days`, plus stories left without posts."""
         cutoff = _iso(_now() - timedelta(days=days))
         n = self.db.execute("DELETE FROM posts WHERE published < ?", (cutoff,)).rowcount
-        self.db.execute(
-            "DELETE FROM stories WHERE last_seen < ? AND id NOT IN "
-            "(SELECT DISTINCT story_id FROM posts WHERE story_id IS NOT NULL)", (cutoff,))
+        self.db.execute("DELETE FROM stories WHERE id NOT IN "
+                        "(SELECT DISTINCT story_id FROM posts WHERE story_id IS NOT NULL)")
         self.db.commit()
         return n
 
-    def delete_post(self, source: str, external_id: str) -> None:
-        """Для синхронизации удалений (используем, когда будет Reddit API)."""
-        self.db.execute("DELETE FROM posts WHERE source=? AND external_id=?",
-                        (source, external_id))
-        self.db.commit()
-
-    # ---------- служебное ----------
+    # ---------- misc ----------
     def get_kv(self, key: str) -> Optional[str]:
         row = self.db.execute("SELECT value FROM kv WHERE key=?", (key,)).fetchone()
         return row["value"] if row else None

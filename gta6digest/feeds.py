@@ -1,4 +1,4 @@
-"""Разбор RSS 2.0 и Atom без внешних библиотек."""
+"""RSS 2.0 and Atom parsing without third-party libraries."""
 from __future__ import annotations
 
 import html
@@ -27,7 +27,7 @@ def parse_date(value: Optional[str]) -> datetime:
         return datetime.now(timezone.utc)
     value = value.strip()
     try:
-        # ISO 8601 (Atom). Python 3.9 не понимает "Z", заменяем вручную.
+        # ISO 8601 (Atom). Python 3.9 does not accept "Z", so replace it.
         dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         try:
@@ -69,7 +69,7 @@ def parse_feed(data: bytes) -> List[FeedEntry]:
 
     channel = root.find("channel")
     if channel is None:
-        raise ValueError("Неизвестный формат ленты")
+        raise ValueError("Unknown feed format")
     for item in channel.findall("item"):
         link = _text(item.find("link"))
         content = _text(item.find(f"{CONTENT_NS}encoded")) or _text(item.find("description"))

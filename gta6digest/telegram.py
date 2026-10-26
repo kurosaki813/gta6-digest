@@ -1,4 +1,7 @@
-"""Отправка в Telegram через Bot API (без сторонних библиотек)."""
+"""Sending to Telegram via the Bot API (no third-party libraries).
+
+The digest goes to a single private chat (your own), it is not published.
+"""
 from __future__ import annotations
 
 import time
@@ -7,11 +10,11 @@ from typing import List
 from . import http
 
 API = "https://api.telegram.org/bot{token}/{method}"
-LIMIT = 4000  # у Telegram лимит 4096 символов на сообщение, оставляем запас
+LIMIT = 4000  # Telegram allows 4096 characters per message; keep a margin
 
 
 def split_message(text: str, limit: int = LIMIT) -> List[str]:
-    """Режем длинный дайджест по строкам, чтобы не разорвать HTML-тег."""
+    """Split a long digest on line boundaries so HTML tags are never cut in half."""
     chunks, current = [], ""
     for line in text.split("\n"):
         if len(current) + len(line) + 1 > limit and current:
@@ -36,11 +39,11 @@ class Telegram:
                 "parse_mode": "HTML",
                 "disable_web_page_preview": True,
             })
-            time.sleep(0.5)  # не упираемся в лимиты Telegram
+            time.sleep(0.5)  # stay well under Telegram's limits
 
     @staticmethod
     def find_chat_ids(token: str) -> List[str]:
-        """Возвращает чаты, которые недавно писали боту. Нужно, чтобы узнать свой chat_id."""
+        """List chats that recently messaged the bot — used to find your chat_id."""
         data = http.get_json(API.format(token=token, method="getUpdates"))
         found = []
         for upd in data.get("result", []):

@@ -1,0 +1,32 @@
+{
+  "kind": "Listing",
+  "data": {
+    "after": "t3_ggg777",
+    "children": [
+      {"kind": "t3", "data": {
+        "name": "t3_fff666", "title": "Rockstar confirms GTA 6 PC version release date",
+        "author": "some_user", "selftext": "", "is_self": false,
+        "url": "https://www.rockstargames.com/newswire/article/pc",
+        "permalink": "/r/GTA6/comments/fff666/rockstar_confirms_pc/",
+        "created_utc": 1792396800.0, "score": 4210, "num_comments": 812,
+        "link_flair_text": "News", "removed_by_category": null
+      }},
+      {"kind": "t3", "data": {
+        "name": "t3_ggg777", "title": "Funny NPC moment",
+        "author": "another_user", "selftext": "Look at this lol", "is_self": true,
+        "url": "https://www.reddit.com/r/GTA6/comments/ggg777/funny/",
+        "permalink": "/r/GTA6/comments/ggg777/funny/",
+        "created_utc": 1792396000.0, "score": 120, "num_comments": 14,
+        "link_flair_text": "Meme / Humor", "removed_by_category": null
+      }},
+      {"kind": "t3", "data": {
+        "name": "t3_hhh888", "title": "Removed post",
+        "author": "[deleted]", "selftext": "[removed]", "is_self": true,
+        "url": "https://www.reddit.com/r/GTA6/comments/hhh888/x/",
+        "permalink": "/r/GTA6/comments/hhh888/x/",
+        "created_utc": 1792395000.0, "score": 1, "num_comments": 0,
+        "link_flair_text": null, "removed_by_category": "moderator"
+      }}
+    ]
+  }
+}

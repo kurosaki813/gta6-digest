@@ -1,8 +1,8 @@
-"""Интерфейс источника.
+"""Source interface.
 
-Любой новый источник (Reddit API, YouTube, сайт) — это класс с двумя вещами:
-имя и метод fetch(), который возвращает список Post. Остальной код
-не знает и не должен знать, откуда пришли посты.
+A new source (Reddit API, a news site, YouTube...) is a class with a name and
+a fetch() method returning a list of Post objects. The rest of the pipeline
+does not know or care where posts come from.
 """
 from __future__ import annotations
 
@@ -14,8 +14,14 @@ from ..models import Post
 
 class Source(ABC):
     name: str = "base"
+    # True if the source can tell us which stored posts were deleted/removed
+    supports_deletion_sync: bool = False
 
     @abstractmethod
     def fetch(self) -> List[Post]:
-        """Вернуть свежие посты. Ошибки сети пусть летят наружу —
-        главный цикл их залогирует и пойдёт к следующему источнику."""
+        """Return fresh posts. Network errors may propagate: the main loop
+        logs them and moves on to the next source."""
+
+    def find_removed(self, external_ids: List[str]) -> List[str]:
+        """Return the IDs (from external_ids) that no longer exist at the source."""
+        return []

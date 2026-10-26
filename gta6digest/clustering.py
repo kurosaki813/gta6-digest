@@ -1,12 +1,12 @@
-"""Склейка дублей: одна новость, запощенная 20 раз, становится одной "историей"."""
+"""Duplicate merging: the same news posted 20 times becomes a single "story"."""
 from __future__ import annotations
 
 import re
 from typing import Optional, Set
 
-_WORD_RE = re.compile(r"[a-zа-яё0-9]+", re.I)
+_WORD_RE = re.compile(r"[a-z0-9]+", re.I)
 
-# Слова, которые есть почти в каждом посте и ничего не говорят о сути
+# Words that appear in almost every post and say nothing about its subject
 STOPWORDS = set("""
 a an the and or but if of to in on at by for with from about as is are was were be been
 it its this that these those i you he she we they my your our their me him her them
@@ -20,7 +20,7 @@ SHORT_KEEP = {"pc", "4k", "ps"}
 
 
 def _stem(w: str) -> str:
-    """Очень грубое приведение к основе: leaked/leaks/leaking -> leak."""
+    """Very rough stemming: leaked/leaks/leaking -> leak."""
     for suf in ("ing", "ed", "es", "s"):
         if len(w) > len(suf) + 3 and w.endswith(suf):
             return w[: -len(suf)]
@@ -45,7 +45,7 @@ def similarity(a: Set[str], b: Set[str]) -> float:
 
 def is_same_story(title_a: str, title_b: str,
                   link_a: Optional[str] = None, link_b: Optional[str] = None) -> bool:
-    # Одинаковая внешняя ссылка — почти наверняка одна и та же новость
+    # The same external link almost certainly means the same news
     if link_a and link_b and link_a.rstrip("/") == link_b.rstrip("/"):
         return True
     ta, tb = tokens(title_a), tokens(title_b)

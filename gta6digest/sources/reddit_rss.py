@@ -1,7 +1,7 @@
-"""Reddit через RSS (без ключа). Временный источник: Reddit отключает RSS 13.11.2026.
+"""Reddit via RSS (no API key). Temporary: Reddit retires RSS feeds on 2026-11-13.
 
-Когда одобрят API, рядом появится reddit_api.py с тем же интерфейсом,
-а этот файл можно будет удалить.
+Once Data API access is approved, switch `mode = api` in config.ini and
+reddit_api.py takes over with the same interface.
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ class RedditRssSource(Source):
     def __init__(self, subreddit: str, user_agent: str, listings: List[str]):
         self.subreddit = subreddit
         self.user_agent = user_agent
-        self.listings = listings  # например ["new", "hot"]
+        self.listings = listings  # e.g. ["new", "hot"]
         self.name = "reddit"
 
     def fetch(self) -> List[Post]:
@@ -34,8 +34,8 @@ class RedditRssSource(Source):
                 data = http.get(url, self.user_agent)
             except http.HttpError as e:
                 if e.status in (403, 404, 410):
-                    log.error("Reddit RSS недоступен (HTTP %s). Возможно, RSS уже отключили — "
-                              "пора переходить на API.", e.status)
+                    log.error("Reddit RSS unavailable (HTTP %s). RSS may have been retired — "
+                              "switch to mode = api.", e.status)
                 raise
             for p in parse_reddit_feed(data):
                 posts[p.external_id] = p
@@ -43,9 +43,9 @@ class RedditRssSource(Source):
 
 
 def _strip_author_trailer(content_html: str) -> str:
-    """Отрезаем хвост "submitted by /u/ник [link] [comments]".
+    """Cut off the "submitted by /u/name [link] [comments]" trailer.
 
-    ВАЖНО (обещание в заявке): именно здесь из данных выкидывается никнейм автора.
+    PRIVACY: this is where the author's username is dropped from RSS data.
     """
     idx = content_html.find("submitted by")
     if idx == -1:
@@ -58,7 +58,7 @@ def _external_link(content_html: str) -> Optional[str]:
     if not m:
         return None
     url = m.group(1)
-    # У текстовых постов [link] ведёт на сам Reddit — это не внешняя ссылка.
+    # For text posts [link] points back to Reddit itself — not an external link.
     if "reddit.com/r/" in url and "/comments/" in url:
         return None
     return url
@@ -68,8 +68,7 @@ def parse_reddit_feed(data: bytes) -> List[Post]:
     result = []
     for e in parse_feed(data):
         body_html = _strip_author_trailer(e.content_html)
-        text = html_to_text(body_html)
-        text = text.replace("&#32;", " ").strip()
+        text = html_to_text(body_html).replace("&#32;", " ").strip()
         result.append(Post(
             source="reddit",
             external_id=e.id,

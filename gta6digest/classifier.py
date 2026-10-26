@@ -1,10 +1,10 @@
-"""Классификатор на правилах: тема + статус достоверности + флаг спойлера.
+"""Rule-based classifier: topic + reliability status + spoiler flag.
 
-Никаких внешних сервисов (обещание в заявке): всё считается локально
-по ключевым словам, доменам ссылок и (позже, с API) флейрам.
+No external services: everything is computed locally from keywords, link
+domains and (with the Reddit API) post flairs.
 
-Как подкрутить: добавляй слова в KEYWORDS. Совпадение в заголовке
-весит 2 очка, в тексте — 1. Побеждает тема с наибольшим счётом.
+Tuning: add words to KEYWORDS. A match in the title is worth 2 points, a match
+in the body 1 point. The topic with the highest score wins.
 """
 from __future__ import annotations
 
@@ -14,33 +14,32 @@ from typing import Dict, Iterable, List, Optional
 from .http import domain_of
 from .models import Classification, Post
 
-# Порядок = порядок разделов в дайджесте
+# Order = order of sections in the digest
 CATEGORIES: Dict[str, str] = {
-    "official":   "📢 Официальные анонсы",
-    "story":      "🎭 Сюжет и персонажи",
-    "map":        "🗺 Карта и локации",
-    "gameplay":   "🎮 Геймплей и механики",
-    "finds":      "🔍 Находки игроков",
-    "technical":  "⚙️ Техническое",
-    "online":     "🌐 Онлайн",
-    "reviews":    "⭐ Отзывы и впечатления",
-    "business":   "💼 Бизнес и продажи",
-    "discussion": "💬 Обсуждения",
-    "memes":      "😂 Мемы",
+    "official":   "📢 Official announcements",
+    "story":      "🎭 Story & characters",
+    "map":        "🗺 Map & locations",
+    "gameplay":   "🎮 Gameplay & mechanics",
+    "finds":      "🔍 Player finds",
+    "technical":  "⚙️ Technical",
+    "online":     "🌐 Online",
+    "reviews":    "⭐ Reviews & impressions",
+    "business":   "💼 Business & sales",
+    "discussion": "💬 Discussion",
+    "memes":      "😂 Memes",
 }
 
 STATUSES: Dict[str, str] = {
-    "official": "✅ официально",
-    "confirmed": "✅ слух подтвердился",
-    "debunked": "❌ опровергнуто",
-    "insider":  "🕵️ инсайдер",
-    "rumor":    "❓ слух",
-    "theory":   "💭 теория",
-    "none":     "",
+    "official":  "✅ official",
+    "confirmed": "✅ rumor confirmed",
+    "debunked":  "❌ debunked",
+    "insider":   "🕵️ insider",
+    "rumor":     "❓ rumor",
+    "theory":    "💭 theory",
+    "none":      "",
 }
 
-# Приоритет статусов: если в одну историю попали пост-слух и
-# официальный пост, у истории остаётся более "сильный" статус.
+# When a new post joins a story, the story keeps the "stronger" status.
 STATUS_PRIORITY = ["none", "theory", "rumor", "insider", "debunked", "official", "confirmed"]
 
 KEYWORDS: Dict[str, List[str]] = {
@@ -113,7 +112,7 @@ def _compile(words: Iterable[str]) -> re.Pattern:
         if not w:
             continue
         esc = re.escape(w)
-        # Границы слов ставим только там, где края — буквы/цифры
+        # Word boundaries only where the edge is a letter/digit
         left = r"\b" if w[0].isalnum() else ""
         right = r"\b" if w[-1].isalnum() else ""
         parts.append(f"{left}{esc}{right}")
@@ -140,8 +139,9 @@ class Classifier:
         text = post.text or ""
         both = f"{title}\n{text}"
         official_link = self._is_official_domain(post.link_url)
+        flair = (post.flair or "").lower()
 
-        # --- тема ---
+        # --- topic scores ---
         scores: Dict[str, int] = {}
         for cat, rx in self._cat.items():
             s = 2 * len(rx.findall(title)) + len(rx.findall(text))
@@ -149,48 +149,42 @@ class Classifier:
                 scores[cat] = s
         if official_link:
             scores["official"] = scores.get("official", 0) + 10
-        if post.flair:  # заработает с Reddit API
-            f = post.flair.lower()
-            if "meme" in f or "humor" in f:
-                scores["memes"] = scores.get("memes", 0) + 5
-            elif "news" in f:
-                scores["official"] = scores.get("official", 0) + 3
-            elif "leak" in f or "rumor" in f:
-                pass  # тема определяется содержанием, флейр влияет на статус ниже
-        # --- статус достоверности ---
+        if "meme" in flair or "humor" in flair:
+            scores["memes"] = scores.get("memes", 0) + 5
+        elif "news" in flair:
+            scores["official"] = scores.get("official", 0) + 3
+
+        # --- reliability status ---
         if official_link or self._official.search(title):
             status = "official"
         elif self._debunk.search(title):
             status = "debunked"
         elif self._insider.search(both):
             status = "insider"
-        elif self._rumor.search(title) or (post.flair and "leak" in post.flair.lower()):
+        elif self._rumor.search(title) or "leak" in flair or "rumor" in flair:
             status = "rumor"
         elif self._theory.search(title):
             status = "theory"
         else:
             status = "none"
 
-        # Тема "Официальные анонсы" только для официальной информации:
-        # слух про дату релиза — это не анонс.
+        # "Official announcements" is reserved for official information:
+        # a rumored release date is not an announcement.
         if status != "official":
             scores.pop("official", None)
         category = max(scores, key=lambda c: (scores[c], -list(CATEGORIES).index(c))) \
             if scores else "discussion"
-
-        # Официальный статус без официальной темы — обычно новость про дату/трейлер
         if status == "official" and category in ("discussion", "memes"):
             category = "official"
 
-        spoiler = bool(self._spoiler.search(title)) or \
-            bool(post.flair and "spoiler" in post.flair.lower())
+        spoiler = bool(self._spoiler.search(title)) or "spoiler" in flair
         return Classification(category=category, status=status, spoiler=spoiler)
 
 
 def stronger_status(a: str, b: str) -> str:
-    """Какой статус оставить у истории, когда в неё добавился новый пост."""
+    """Which status a story keeps when a new post joins it."""
     if a in ("rumor", "insider") and b == "official":
-        return "confirmed"  # слух подтвердился официально
+        return "confirmed"  # the rumor was officially confirmed
     ia = STATUS_PRIORITY.index(a) if a in STATUS_PRIORITY else 0
     ib = STATUS_PRIORITY.index(b) if b in STATUS_PRIORITY else 0
     return a if ia >= ib else b

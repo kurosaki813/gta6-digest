@@ -1,4 +1,4 @@
-"""Новостные сайты через RSS. Берём только статьи про GTA 6."""
+"""News sites via RSS. Only articles about GTA 6 are kept."""
 from __future__ import annotations
 
 import re

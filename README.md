@@ -1,10 +1,26 @@
 # GTA 6 News Digest
 
-Личный некоммерческий парсер новостей про GTA 6. Собирает посты из r/GTA6 и статьи игровых сайтов, раскладывает их по категориям, склеивает дубли и присылает дайджест в Telegram.
+A personal, non-commercial tool that keeps track of Grand Theft Auto VI news. It reads posts from r/GTA6 and articles from gaming news sites, sorts them into topics, merges duplicates and sends a private daily digest to my own Telegram chat.
 
-Без внешних библиотек: нужен только Python 3.9+.
+No third-party packages: only Python 3.9+ is required.
 
-## Быстрый старт (macOS)
+## Reddit data handling
+
+This project only **reads** public posts from a single subreddit (r/GTA6). These rules are built into the code, and the matching places are marked with `PRIVACY`, `RATE LIMITS`, `RETENTION` or `DELETION SYNC` comments.
+
+| Rule | Where it is enforced |
+|---|---|
+| **Read-only.** No posting, commenting, voting or messaging. The only non-GET request is the OAuth token request. | `sources/reddit_api.py`, test `test_read_only_and_user_agent` |
+| **No usernames are stored.** There is no author field in the data model or the database. The `author` field is read only to detect deleted posts and is then discarded. | `models.py`, `storage.py`, `reddit_api.parse_post`, `reddit_rss._strip_author_trailer`, test `test_no_usernames_anywhere` |
+| **No user profiling.** Posts are classified by topic only; nothing is inferred about the people who wrote them. | `classifier.py` |
+| **Deleted and removed posts are deleted locally.** Every 6 hours stored posts are re-checked via `/api/info`, and posts that were deleted by their author or removed by moderators are removed from the database. | `App.sync_deletions`, `RedditApiSource.find_removed`, `Storage.delete_post` |
+| **Limited retention.** Posts older than `retention_days` (default 14, hard cap 30) are deleted every cycle. | `Storage.purge_older_than`, `config.py` |
+| **Rate limits are respected.** One poll every 20 minutes (minimum 15), at least 1 second between requests, the `X-Ratelimit-*` headers are honoured and 429 responses are retried with back-off. Expected usage is well under 500 requests per day. | `RedditApiSource._wait_for_slot`, `http.request` |
+| **Identifiable User-Agent.** `gta6-digest/<version> by u/<app account>`. | `config.ini` → `user_agent` |
+| **No third parties.** Classification is rule-based and local. Reddit data is not sent to any external service, not used to train models, not sold or shared. | `classifier.py` |
+| **Private output.** The digest goes to one private Telegram chat and is not published anywhere. | `telegram.py` |
+
+## Quick start (macOS / Linux)
 
 ```bash
 cd gta6-digest
@@ -12,78 +28,78 @@ cp config.example.ini config.ini
 python3 main.py once
 ```
 
-`once` делает один сбор и печатает дайджест в консоль. Если всё работает, настраиваем Telegram.
+`once` runs one collection cycle and prints the digest to the console.
 
-## Telegram
+### Reddit modes
 
-1. В Telegram напиши @BotFather → `/newbot` → получишь токен.
-2. Впиши токен в `config.ini` (секция `[telegram]`, строка `token`).
-3. Напиши своему боту любое сообщение.
-4. `python3 main.py chat-id` → скопируй число в `chat_id`.
-5. Поставь `enabled = true`.
-6. `python3 main.py test-telegram` → должно прийти «GTA 6 Digest на связи!».
+- `mode = rss` (default) works without an API key. Reddit retires RSS feeds on 2026-11-13.
+- `mode = api` uses the official Data API. Create a "script" app at https://www.reddit.com/prefs/apps after access is approved, then fill in `client_id`, `client_secret`, `username` and `password` in `config.ini`. Deletion sync only works in this mode.
 
-## Постоянная работа
+### Telegram
+
+1. Message @BotFather in Telegram → `/newbot` → copy the token.
+2. Put the token into `config.ini` (`[telegram]` → `token`).
+3. Send any message to your bot.
+4. Run `python3 main.py chat-id` and copy the number into `chat_id`.
+5. Set `enabled = true`.
+6. Run `python3 main.py test-telegram`. You should receive "GTA 6 Digest is up and running!".
+
+### Running continuously
 
 ```bash
 python3 main.py run
 ```
 
-Каждые 20 минут собирает новое, сразу присылает официальные новости и подтвердившиеся слухи, раз в день (по умолчанию в 10:00) присылает дайджест. Остановить: Ctrl+C. Лог пишется в `data/parser.log`.
+Every 20 minutes it collects new posts and sends official news and confirmed rumors immediately. Once a day (10:00 by default) it sends the digest. Stop it with Ctrl+C. The log is written to `data/parser.log`.
 
-Чтобы работало, когда терминал закрыт:
+To keep it running after closing the terminal:
 
 ```bash
 nohup python3 main.py run > /dev/null 2>&1 &
 ```
 
-## Все команды
+## Commands
 
-| Команда | Что делает |
+| Command | What it does |
 |---|---|
-| `python3 main.py run` | работать постоянно |
-| `python3 main.py once` | один сбор + дайджест в консоль |
-| `python3 main.py digest` | показать дайджест из базы |
-| `python3 main.py digest --send` | отправить дайджест в Telegram |
-| `python3 main.py digest --hours 72` | дайджест за 3 дня |
-| `python3 main.py stats` | статистика по категориям |
-| `python3 main.py chat-id` | узнать chat_id |
-| `python3 main.py test-telegram` | тестовое сообщение |
-| `python3 -m unittest` | прогнать тесты |
+| `python3 main.py run` | run continuously |
+| `python3 main.py once` | one collection cycle + digest in the console |
+| `python3 main.py digest` | print the digest from the database |
+| `python3 main.py digest --send` | send the digest to Telegram |
+| `python3 main.py digest --hours 72` | digest for the last 3 days |
+| `python3 main.py sync-deletions` | check for deleted posts right now (API mode) |
+| `python3 main.py stats` | counts by category |
+| `python3 main.py chat-id` | find your Telegram chat_id |
+| `python3 main.py test-telegram` | send a test message |
+| `python3 -m unittest` | run the tests |
 
-## Как устроено
+## How it works
 
 ```
-источники ──► классификатор ──► база SQLite ──► склейка дублей ──► дайджест / уведомления
+sources ──► classifier ──► SQLite ──► duplicate merging ──► digest / alerts
+                              ▲
+                deletion sync + retention purge
 ```
 
-- `gta6digest/sources/` — источники. Каждый реализует интерфейс `Source` с методом `fetch()`.
-  - `reddit_rss.py` — Reddit через RSS (временно, RSS отключают 13.11.2026).
-  - `news_rss.py` — новостные сайты, берутся только статьи про GTA 6.
-- `classifier.py` — правила: тема, статус достоверности, спойлер. Чтобы улучшить классификацию, добавляй слова в `KEYWORDS`.
-- `clustering.py` — склейка одинаковых новостей в одну «историю».
-- `storage.py` — база данных.
-- `digest.py`, `telegram.py` — оформление и отправка.
+- `gta6digest/sources/`: every source implements the `Source` interface (`fetch()`, optional `find_removed()`).
+  - `reddit_api.py`: official Data API (OAuth script app, read-only).
+  - `reddit_rss.py`: RSS fallback, no key needed.
+  - `news_rss.py`: gaming news sites, only GTA 6 articles are kept.
+- `classifier.py`: rules for topic, reliability status and spoiler flag. Add words to `KEYWORDS` to tune it.
+- `clustering.py`: merges posts about the same news into one "story".
+- `storage.py`: the database, retention and deletion handling.
+- `digest.py`, `telegram.py`: formatting and delivery.
 
-### Категории
+### Topics
 
-Официальные анонсы, Сюжет и персонажи, Карта и локации, Геймплей, Находки игроков, Техническое, Онлайн, Отзывы, Бизнес, Обсуждения, Мемы (скрыты по умолчанию).
+Official announcements · Story & characters · Map & locations · Gameplay & mechanics · Player finds · Technical · Online · Reviews & impressions · Business & sales · Discussion · Memes (hidden by default)
 
-### Статусы
+### Reliability statuses
 
-✅ официально · ✅ слух подтвердился · ❌ опровергнуто · 🕵️ инсайдер · ❓ слух · 💭 теория
+✅ official · ✅ rumor confirmed · ❌ debunked · 🕵️ insider · ❓ rumor · 💭 theory
 
-Если в историю-слух попадает пост со ссылкой на rockstargames.com, она становится «слух подтвердился», и приходит уведомление.
+When a post linking to rockstargames.com joins a story that started as a rumor, the story becomes "rumor confirmed" and an alert is sent.
 
-## Что мы обещали Reddit (места помечены в коде словом ВАЖНО)
+## License
 
-- Никнеймы авторов не хранятся: отрезаются в `reddit_rss.py`, колонки автора в базе нет. Проверяется тестом `test_no_usernames_anywhere`.
-- Данные старше 30 дней удаляются: `storage.purge_older_than`, вызывается каждый цикл.
-- Лимиты не превышаем: опрос раз в 20 минут, максимум 3 попытки с паузой при ошибках (`http.py`).
-- Данные никуда не отправляются, классификация только на правилах.
-- Синхронизация удалений появится вместе с Reddit API (метод `delete_post` уже готов).
-
-## Планы
-
-- [ ] Источник через Reddit API, когда одобрят заявку (рейтинги, комментарии, флейры).
-- [ ] Учитывать рейтинг и скорость роста в сортировке.
+MIT, see [LICENSE](LICENSE).

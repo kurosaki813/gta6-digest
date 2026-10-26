@@ -1,4 +1,4 @@
-"""Сборка дайджеста и мгновенных уведомлений (HTML для Telegram + текст для консоли)."""
+"""Digest and instant-alert formatting (HTML for Telegram, plain text for the console)."""
 from __future__ import annotations
 
 import html
@@ -12,13 +12,12 @@ from .classifier import CATEGORIES, STATUSES
 
 def _story_line(s: sqlite3.Row) -> str:
     title = html.escape(s["title"])
+    prefix = ""
     if s["spoiler"]:
         title = f"<tg-spoiler>{title}</tg-spoiler>"
-        prefix = "⚠️ спойлер: "
-    else:
-        prefix = ""
-    status = STATUSES.get(s["status"], "")
+        prefix = "⚠️ spoiler: "
     extra = []
+    status = STATUSES.get(s["status"], "")
     if status:
         extra.append(status)
     if s["mentions"] > 1:
@@ -45,16 +44,16 @@ def build_digest(stories: Iterable[sqlite3.Row], max_per_category: int,
         total += len(shown)
         lines = [f"\n<b>{label}</b>"] + [_story_line(s) for s in shown]
         if len(items) > len(shown):
-            lines.append(f"<i>…и ещё {len(items) - len(shown)}</i>")
+            lines.append(f"<i>…and {len(items) - len(shown)} more</i>")
         parts.append("\n".join(lines))
     if total == 0:
-        parts.append("\nЗа этот период ничего нового.")
+        parts.append("\nNothing new in this period.")
     return "\n".join(parts)
 
 
 def build_alert(s: sqlite3.Row) -> str:
-    head = "🚨 <b>Слух подтвердился!</b>" if s["status"] == "confirmed" \
-        else "🚨 <b>Официальная новость</b>"
+    head = "🚨 <b>Rumor confirmed!</b>" if s["status"] == "confirmed" \
+        else "🚨 <b>Official news</b>"
     return f"{head}\n{_story_line(s)}"
 
 
@@ -65,4 +64,4 @@ def html_to_console(text: str) -> str:
 
 
 def digest_header(now: datetime) -> str:
-    return f"GTA 6 — дайджест за {now.strftime('%d.%m.%Y')}"
+    return f"GTA 6 digest — {now.strftime('%d %b %Y')}"
